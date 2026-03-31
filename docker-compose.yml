@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - fish-network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://fish_user:fish_pass@db:5432/fishdb
+      - MODEL_PATH=/app/models/best.pt
+    volumes:
+      - ../ai-model/models:/app/models:ro
+    depends_on:
+      - db
+    networks:
+      - fish-network
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=fish_user
+      - POSTGRES_PASSWORD=fish_pass
+      - POSTGRES_DB=fishdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fish-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - fish-network
+
+volumes:
+  postgres_data:
+
+networks:
+  fish-network:
+    driver: bridge
