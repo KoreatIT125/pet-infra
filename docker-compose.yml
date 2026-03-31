@@ -6,58 +6,66 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
-      - REACT_APP_API_URL=http://backend:8000
+      - VITE_API_URL=http://localhost:8080
     depends_on:
       - backend
     networks:
-      - fish-network
+      - safety-network
 
   backend:
     build:
       context: ../backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8080:8080"
     environment:
-      - DATABASE_URL=postgresql://fish_user:fish_pass@db:5432/fishdb
-      - MODEL_PATH=/app/models/best.pt
-    volumes:
-      - ../ai-model/models:/app/models:ro
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/safety_db
+      - SPRING_DATASOURCE_USERNAME=safety_user
+      - SPRING_DATASOURCE_PASSWORD=safety_pass
+      - AI_MODEL_URL=http://ai-model:5000
     depends_on:
       - db
+      - ai-model
     networks:
-      - fish-network
+      - safety-network
+
+  ai-model:
+    build:
+      context: ../ai-model
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../ai-model/models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - safety-network
 
   db:
-    image: postgres:15-alpine
+    image: mysql:8.0
     environment:
-      - POSTGRES_USER=fish_user
-      - POSTGRES_PASSWORD=fish_pass
-      - POSTGRES_DB=fishdb
+      - MYSQL_DATABASE=safety_db
+      - MYSQL_USER=safety_user
+      - MYSQL_PASSWORD=safety_pass
+      - MYSQL_ROOT_PASSWORD=root_pass
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
     networks:
-      - fish-network
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - frontend
-      - backend
-    networks:
-      - fish-network
+      - safety-network
 
 volumes:
-  postgres_data:
+  mysql_data:
 
 networks:
-  fish-network:
+  safety-network:
     driver: bridge

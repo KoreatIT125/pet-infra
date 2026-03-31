@@ -1,156 +1,125 @@
-# Fish Detection Infrastructure
+# Infrastructure - Disaster Safety System
 
-배포 및 인프라 설정
+Docker Compose 및 배포 설정
 
-## 🚀 Tech Stack
+## 🚀 Quick Start
 
-- Docker & Docker Compose
-- GitHub Actions (CI/CD)
-- AWS / GCP (선택)
-- Nginx
-- PostgreSQL
-
-## 📁 Directory Structure
-
-```
-infra/
-├── docker/
-│   ├── frontend/
-│   │   └── Dockerfile
-│   ├── backend/
-│   │   └── Dockerfile
-│   └── nginx/
-│       └── nginx.conf
-├── docker-compose.yml      # 로컬 개발 환경
-├── docker-compose.prod.yml # 프로덕션 환경
-├── .github/
-│   └── workflows/
-│       ├── frontend-ci.yml
-│       ├── backend-ci.yml
-│       └── ai-model-ci.yml
-├── kubernetes/              # K8s (선택)
-│   ├── deployment.yaml
-│   └── service.yaml
-├── scripts/
-│   ├── deploy.sh
-│   └── backup.sh
-└── README.md
-```
-
-## 🐳 Docker Compose
-
-### 로컬 개발 환경
+### 전체 서비스 실행
 
 ```bash
-# 전체 서비스 실행
 docker-compose up -d
+```
 
-# 특정 서비스만
-docker-compose up frontend backend
+### 서비스 접속
 
-# 로그 확인
-docker-compose logs -f
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8080
+- **AI Model**: http://localhost:5000
+- **MySQL**: localhost:3306
 
-# 종료
+### 서비스 중지
+
+```bash
 docker-compose down
 ```
 
-**Services**:
-- `frontend` - http://localhost:3000
-- `backend` - http://localhost:8000
-- `database` - PostgreSQL (port 5432)
-- `nginx` - Reverse proxy (port 80)
-
-### 프로덕션 환경
+### 로그 확인
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+docker-compose logs -f
 ```
 
-## 🔄 CI/CD Pipeline
+## 📦 Services
 
-### GitHub Actions Workflows
+### Frontend
+- **Port**: 3000
+- **Image**: disaster-safety-frontend
+- **Depends**: backend
 
-**Frontend CI**:
-- Lint & Type check
-- Unit tests
-- Build check
-- Auto deploy (main 브랜치)
+### Backend
+- **Port**: 8080
+- **Image**: disaster-safety-backend
+- **Depends**: db, ai-model
 
-**Backend CI**:
-- Lint & Format (Black, Flake8)
-- Unit tests (pytest)
-- Integration tests
-- Docker build
+### AI Model
+- **Port**: 5000
+- **Image**: disaster-safety-ai-model
+- **GPU**: Required (NVIDIA)
 
-**AI Model CI**:
-- Model validation
-- Performance benchmark
-- Export to ONNX
+### Database (MySQL)
+- **Port**: 3306
+- **Database**: safety_db
+- **User**: safety_user
+- **Password**: safety_pass
 
-## 🌐 Deployment
+## 🐳 Docker Commands
 
-### AWS EC2 배포
+### 개별 서비스 빌드
 
 ```bash
-# 서버 접속
-ssh -i key.pem ubuntu@<server-ip>
-
-# 코드 업데이트
-git pull origin main
-
-# Docker 재시작
-docker-compose -f docker-compose.prod.yml up -d --build
+docker-compose build frontend
+docker-compose build backend
+docker-compose build ai-model
 ```
 
-### 환경 변수
+### 개별 서비스 재시작
 
-`.env` 파일 생성:
+```bash
+docker-compose restart frontend
+```
+
+### 볼륨 삭제
+
+```bash
+docker-compose down -v
+```
+
+## 🔧 Environment Variables
+
+### Backend
+
 ```env
-# Backend
-DATABASE_URL=postgresql://user:pass@db:5432/fishdb
-SECRET_KEY=your-secret-key
+SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/safety_db
+SPRING_DATASOURCE_USERNAME=safety_user
+SPRING_DATASOURCE_PASSWORD=safety_pass
+AI_MODEL_URL=http://ai-model:5000
+```
 
+### Frontend
+
+```env
+VITE_API_URL=http://localhost:8080
+```
+
+## 📊 Health Checks
+
+```bash
 # Frontend
-REACT_APP_API_URL=http://localhost:8000
+curl http://localhost:3000
+
+# Backend
+curl http://localhost:8080/api/health
 
 # AI Model
-MODEL_PATH=/app/models/best.pt
+curl http://localhost:5000/health
+
+# Database
+docker-compose exec db mysql -u safety_user -p safety_db
 ```
 
-## 📊 Monitoring
+## 🚀 Production Deployment
 
-- **Logs**: `docker-compose logs`
-- **Metrics**: Prometheus + Grafana (선택)
-- **Health Check**: `http://backend:8000/health`
+### AWS EC2
 
-## 🔒 Security
+1. Install Docker & Docker Compose
+2. Clone repository
+3. Update environment variables
+4. Run `docker-compose up -d`
 
-- SSL/TLS 인증서 (Let's Encrypt)
-- 환경 변수로 민감 정보 관리
-- `.env` 파일은 **절대 Git에 커밋 금지**
+### Kubernetes (Optional)
 
-## 🛠️ Useful Commands
+See `k8s/` directory for Kubernetes manifests.
 
-```bash
-# 전체 재빌드
-docker-compose build --no-cache
+## 📝 License
 
-# DB 백업
-docker exec -t postgres pg_dump -U user fishdb > backup.sql
-
-# DB 복원
-docker exec -i postgres psql -U user fishdb < backup.sql
-
-# 컨테이너 정리
-docker system prune -a
-```
-
-## 👥 Team
-
-Infra / DevOps Team
-
-## 📚 References
-
-- [Docker Documentation](https://docs.docker.com/)
-- [GitHub Actions](https://docs.github.com/en/actions)
+MIT
