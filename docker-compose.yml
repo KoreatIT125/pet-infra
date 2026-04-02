@@ -1,71 +1,81 @@
 version: '3.8'
 
 services:
+  # Frontend - React + Nginx
   frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    build: ../frontend
+    container_name: salmon-frontend
     ports:
       - "3000:80"
     environment:
-      - VITE_API_URL=http://localhost:8080
+      - VITE_API_BASE_URL=http://localhost:8080/api
     depends_on:
       - backend
     networks:
-      - safety-network
+      - salmon-network
+    restart: unless-stopped
 
+  # Backend - Spring Boot
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    build: ../backend
+    container_name: salmon-backend
     ports:
       - "8080:8080"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/safety_db
-      - SPRING_DATASOURCE_USERNAME=safety_user
-      - SPRING_DATASOURCE_PASSWORD=safety_pass
-      - AI_MODEL_URL=http://ai-model:5000
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/salmon_farm?useUnicode=true&characterEncoding=utf8mb4
+      - SPRING_DATASOURCE_USERNAME=salmon_user
+      - SPRING_DATASOURCE_PASSWORD=salmon_pass123
+      - AI_MODEL_BASE_URL=http://ai-model:5000
     depends_on:
       - db
       - ai-model
     networks:
-      - safety-network
+      - salmon-network
+    restart: unless-stopped
 
+  # AI Model - Flask + YOLOv8
   ai-model:
-    build:
-      context: ../ai-model
-      dockerfile: Dockerfile
+    build: ../ai-model
+    container_name: salmon-ai-model
     ports:
       - "5000:5000"
     volumes:
-      - ../ai-model/models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - ../ai-model/models:/app/models  # 학습된 모델 마운트
     networks:
-      - safety-network
+      - salmon-network
+    restart: unless-stopped
+    # GPU 지원 (선택 사항 - NVIDIA Docker Runtime 필요)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
+  # Database - MySQL 8.0
   db:
     image: mysql:8.0
-    environment:
-      - MYSQL_DATABASE=safety_db
-      - MYSQL_USER=safety_user
-      - MYSQL_PASSWORD=safety_pass
-      - MYSQL_ROOT_PASSWORD=root_pass
+    container_name: salmon-db
     ports:
       - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=salmon_farm
+      - MYSQL_USER=salmon_user
+      - MYSQL_PASSWORD=salmon_pass123
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql  # 데이터 영속성
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # 초기화 SQL
     networks:
-      - safety-network
+      - salmon-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
 
 volumes:
   mysql_data:
+    driver: local
 
 networks:
-  safety-network:
+  salmon-network:
     driver: bridge
