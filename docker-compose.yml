@@ -58,7 +58,7 @@ services:
     image: mysql:8.0
     container_name: salmon-db
     ports:
-      - "3306:3306"
+      - "3308:3306"  # 외부 포트 3308로 변경
     environment:
       - MYSQL_ROOT_PASSWORD=root_password
       - MYSQL_DATABASE=salmon_farm
