@@ -1,395 +1,402 @@
-# 🐟 Infra - 북태평양 연어 지능형 양식장 인프라
+# PetMediScan Infrastructure
 
-Docker Compose 기반 전체 시스템 배포
+반려동물 안구/피부질환 진단 애플리케이션 인프라 구성
 
----
+## 기술 스택
 
-## 📋 **목차**
+- **Container**: Docker, Docker Compose
+- **CI/CD**: Jenkins
+- **Database**: MySQL 8.0
+- **Reverse Proxy**: Nginx (선택)
+- **Monitoring**: Prometheus + Grafana (선택)
 
-- [개요](#-개요)
-- [시스템 구성](#-시스템-구성)
-- [빠른 시작](#-빠른-시작)
-- [서비스 상세](#-서비스-상세)
-- [설정 파일](#-설정-파일)
+## 포트 할당
 
----
+| 서비스 | 포트 | 설명 |
+|--------|------|------|
+| MySQL | 3308 | 데이터베이스 |
+| Spring Boot | 8080 | Backend API |
+| FastAPI (Eye) | 5000 | 안구질환 AI 모델 |
+| FastAPI (Skin) | 5001 | 피부질환 AI 모델 |
+| Jenkins | 8090 | CI/CD 서버 |
+| React Native Metro | 8081 | 모바일 개발 서버 |
 
-## 🎯 **개요**
-
-**Docker Compose**로 전체 시스템을 한 번에 실행할 수 있습니다.
-
-### **포함 서비스**
-- **Frontend** (React) - 포트 3000
-- **Backend** (Spring Boot) - 포트 8080
-- **AI Model** (Flask) - 포트 5000
-- **MySQL** - 포트 3306
-
----
-
-## 🏗️ **시스템 구성**
+## 프로젝트 구조
 
 ```
-┌─────────────────────────────────────────────┐
-│           사용자 (웹 브라우저)              │
-└────────────────┬────────────────────────────┘
-                 │ :3000
-     ┌───────────▼───────────┐
-     │   Frontend (React)    │
-     │  - Nginx (Production) │
-     └───────────┬───────────┘
-                 │ :8080
-     ┌───────────▼───────────┐
-     │ Backend (Spring Boot) │
-     │  - REST API           │
-     │  - WebSocket          │
-     └─────┬─────────────┬───┘
-           │ :5000       │ :3306
-   ┌───────▼──────┐  ┌──▼───────────┐
-   │  AI Model    │  │  MySQL 8.0   │
-   │  (Flask)     │  │  Database    │
-   │  - YOLOv8    │  │              │
-   └──────────────┘  └──────────────┘
+pet-infra/
+├── docker/
+│   ├── mysql/
+│   │   ├── Dockerfile
+│   │   └── init.sql           # 초기 스키마
+│   ├── backend/
+│   │   └── Dockerfile
+│   ├── ai-eye/
+│   │   └── Dockerfile
+│   └── ai-skin/
+│       └── Dockerfile
+│
+├── jenkins/
+│   ├── Jenkinsfile.backend    # Backend CI/CD
+│   ├── Jenkinsfile.ai-eye     # AI Eye CI/CD
+│   └── Jenkinsfile.ai-skin    # AI Skin CI/CD
+│
+├── nginx/
+│   └── nginx.conf             # Reverse Proxy 설정
+│
+├── docker-compose.yml         # 전체 서비스 구성
+└── README.md
 ```
 
----
+## Docker Compose 구성
 
-## 🚀 **빠른 시작**
+### docker-compose.yml
 
-### **1. 전체 시스템 실행**
-```bash
-# docker-compose.yml이 있는 디렉토리에서
-docker-compose up -d
-```
-
-### **2. 서비스 확인**
-```bash
-docker-compose ps
-```
-
-**예상 출력**:
-```
-NAME                  IMAGE                   STATUS
-salmon-frontend       salmon-frontend:latest  Up
-salmon-backend        salmon-backend:latest   Up
-salmon-ai-model       salmon-ai-model:latest  Up
-salmon-db             mysql:8.0               Up
-```
-
-### **3. 접속 테스트**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8080/api/health
-- AI Model API: http://localhost:5000/health
-- MySQL: localhost:3306
-
----
-
-### **4. 로그 확인**
-```bash
-# 전체 로그
-docker-compose logs -f
-
-# 특정 서비스 로그
-docker-compose logs -f frontend
-docker-compose logs -f backend
-docker-compose logs -f ai-model
-```
-
----
-
-### **5. 시스템 종료**
-```bash
-# 컨테이너 중지
-docker-compose stop
-
-# 컨테이너 삭제
-docker-compose down
-
-# 볼륨까지 삭제 (데이터 초기화)
-docker-compose down -v
-```
-
----
-
-## 📦 **서비스 상세**
-
-### **Frontend (React + Nginx)**
-```yaml
-frontend:
-  build: ../frontend
-  ports:
-    - "3000:80"
-  environment:
-    - VITE_API_BASE_URL=http://localhost:8080/api
-  depends_on:
-    - backend
-```
-
-**역할**:
-- React 앱 정적 파일 서빙 (Nginx)
-- Backend API 프록시
-
----
-
-### **Backend (Spring Boot)**
-```yaml
-backend:
-  build: ../backend
-  ports:
-    - "8080:8080"
-  environment:
-    - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/salmon_farm
-    - SPRING_DATASOURCE_USERNAME=salmon_user
-    - SPRING_DATASOURCE_PASSWORD=salmon_pass123
-    - AI_MODEL_BASE_URL=http://ai-model:5000
-  depends_on:
-    - db
-    - ai-model
-```
-
-**역할**:
-- REST API 제공
-- 데이터베이스 관리
-- AI 모델 호출
-
----
-
-### **AI Model (Flask + YOLOv8)**
-```yaml
-ai-model:
-  build: ../ai-model
-  ports:
-    - "5000:5000"
-  volumes:
-    - ../ai-model/models:/app/models
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
-
-**역할**:
-- YOLO 모델 추론
-- 연어 감지, 크기 측정, 질병 감지
-
-**GPU 지원**:
-- NVIDIA Docker Runtime 필요
-- GPU 없이 실행 시 CPU로 자동 전환
-
----
-
-### **MySQL Database**
-```yaml
-db:
-  image: mysql:8.0
-  ports:
-    - "3306:3306"
-  environment:
-    - MYSQL_ROOT_PASSWORD=root_password
-    - MYSQL_DATABASE=salmon_farm
-    - MYSQL_USER=salmon_user
-    - MYSQL_PASSWORD=salmon_pass123
-  volumes:
-    - mysql_data:/var/lib/mysql
-    - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-```
-
-**역할**:
-- 연어 감지 이력 저장
-- 센서 데이터 저장
-- 사료 공급 이력 저장
-
----
-
-## ⚙️ **설정 파일**
-
-### **docker-compose.yml** (전체)
 ```yaml
 version: '3.8'
 
 services:
-  frontend:
-    build: ../frontend
-    container_name: salmon-frontend
+  # MySQL 데이터베이스
+  mysql:
+    image: mysql:8.0
+    container_name: petmediscan-mysql
+    restart: always
     ports:
-      - "3000:80"
+      - "3308:3306"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8080/api
-    depends_on:
-      - backend
+      MYSQL_ROOT_PASSWORD: petmedi123
+      MYSQL_DATABASE: petmediscan
+      MYSQL_USER: petuser
+      MYSQL_PASSWORD: petpass
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - salmon-network
+      - petmediscan-network
 
+  # Spring Boot Backend
   backend:
-    build: ../backend
-    container_name: salmon-backend
+    build:
+      context: ../pet-backend
+      dockerfile: Dockerfile
+    container_name: petmediscan-backend
+    restart: always
     ports:
       - "8080:8080"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/salmon_farm
-      - SPRING_DATASOURCE_USERNAME=salmon_user
-      - SPRING_DATASOURCE_PASSWORD=salmon_pass123
-      - AI_MODEL_BASE_URL=http://ai-model:5000
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/petmediscan
+      SPRING_DATASOURCE_USERNAME: petuser
+      SPRING_DATASOURCE_PASSWORD: petpass
+      AI_EYE_SERVICE_URL: http://ai-eye:5000
+      AI_SKIN_SERVICE_URL: http://ai-skin:5001
     depends_on:
-      - db
-      - ai-model
+      - mysql
     networks:
-      - salmon-network
+      - petmediscan-network
 
-  ai-model:
-    build: ../ai-model
-    container_name: salmon-ai-model
+  # 안구질환 AI 모델 서버
+  ai-eye:
+    build:
+      context: ../pet-ai-eye
+      dockerfile: Dockerfile
+    container_name: petmediscan-ai-eye
+    restart: always
     ports:
       - "5000:5000"
     volumes:
-      - ../ai-model/models:/app/models
+      - ./models/eye:/app/models
     networks:
-      - salmon-network
+      - petmediscan-network
 
-  db:
-    image: mysql:8.0
-    container_name: salmon-db
+  # 피부질환 AI 모델 서버
+  ai-skin:
+    build:
+      context: ../pet-ai-skin
+      dockerfile: Dockerfile
+    container_name: petmediscan-ai-skin
+    restart: always
     ports:
-      - "3306:3306"
-    environment:
-      - MYSQL_ROOT_PASSWORD=root_password
-      - MYSQL_DATABASE=salmon_farm
-      - MYSQL_USER=salmon_user
-      - MYSQL_PASSWORD=salmon_pass123
+      - "5001:5001"
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./models/skin:/app/models
     networks:
-      - salmon-network
+      - petmediscan-network
+
+  # Jenkins CI/CD
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: petmediscan-jenkins
+    restart: always
+    ports:
+      - "8090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - petmediscan-network
 
 volumes:
   mysql_data:
+  jenkins_data:
 
 networks:
-  salmon-network:
+  petmediscan-network:
     driver: bridge
 ```
 
----
+## 사용 방법
 
-### **init.sql** (데이터베이스 초기화)
+### 1. 전체 서비스 시작
+
+```bash
+# 모든 서비스 시작
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f
+
+# 특정 서비스만 시작
+docker-compose up -d mysql backend
+```
+
+### 2. 서비스 중지
+
+```bash
+# 모든 서비스 중지
+docker-compose down
+
+# 볼륨까지 삭제
+docker-compose down -v
+```
+
+### 3. 서비스 재시작
+
+```bash
+# 특정 서비스 재시작
+docker-compose restart backend
+
+# 전체 재시작
+docker-compose restart
+```
+
+### 4. 빌드 및 재시작
+
+```bash
+# 이미지 재빌드
+docker-compose build
+
+# 재빌드 후 시작
+docker-compose up -d --build
+```
+
+## Jenkins CI/CD 설정
+
+### 1. Jenkins 초기 설정
+
+```bash
+# Jenkins 초기 비밀번호 확인
+docker exec petmediscan-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+# 브라우저에서 접속
+http://localhost:8090
+```
+
+### 2. Jenkins Pipeline (Backend)
+
+```groovy
+// Jenkinsfile.backend
+pipeline {
+    agent any
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/KoreatIT125/pet-backend.git'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                sh './gradlew clean build'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh './gradlew test'
+            }
+        }
+        
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t petmediscan-backend:${BUILD_NUMBER} .'
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker stop petmediscan-backend || true
+                    docker rm petmediscan-backend || true
+                    docker run -d -p 8080:8080 \
+                        --name petmediscan-backend \
+                        petmediscan-backend:${BUILD_NUMBER}
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Backend deployment successful!'
+        }
+        failure {
+            echo 'Backend deployment failed!'
+        }
+    }
+}
+```
+
+### 3. Webhook 설정
+
+GitHub Repository Settings → Webhooks:
+- Payload URL: `http://<jenkins-url>:8090/github-webhook/`
+- Content type: `application/json`
+- Events: `Push events`, `Pull requests`
+
+## 데이터베이스 초기화
+
+### init.sql
+
 ```sql
--- 연어 감지 이력 테이블
-CREATE TABLE IF NOT EXISTS fish_detection (
+-- 사용자 테이블
+CREATE TABLE users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    tank_id VARCHAR(50) NOT NULL,
-    count INT NOT NULL,
-    average_length_mm DECIMAL(6,2),
-    average_weight_g DECIMAL(7,2),
-    image_path VARCHAR(255),
-    detected_at DATETIME NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_tank_detected (tank_id, detected_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 수질 센서 데이터 테이블
-CREATE TABLE IF NOT EXISTS water_sensor (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    tank_id VARCHAR(50) NOT NULL,
-    temperature_c DECIMAL(4,2),
-    salinity_ppt DECIMAL(4,2),
-    do_mg_l DECIMAL(4,2),
-    ph DECIMAL(3,2),
-    orp_mv DECIMAL(5,2),
-    illuminance_lux DECIMAL(6,2),
-    measured_at DATETIME NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_tank_measured (tank_id, measured_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 사료 공급 이력 테이블
-CREATE TABLE IF NOT EXISTS feed_supply (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    tank_id VARCHAR(50) NOT NULL,
-    feed_type VARCHAR(50) NOT NULL,
-    amount_g DECIMAL(7,2) NOT NULL,
-    protein_percent DECIMAL(4,2),
-    fat_percent DECIMAL(4,2),
-    supplied_at DATETIME NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_tank_supplied (tank_id, supplied_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 수조 정보 테이블
-CREATE TABLE IF NOT EXISTS tank_info (
-    tank_id VARCHAR(50) PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
     name VARCHAR(100) NOT NULL,
-    type VARCHAR(50),
-    radius_cm INT,
-    height_cm INT,
-    location VARCHAR(255),
-    status VARCHAR(20) DEFAULT 'active',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 샘플 데이터 삽입
-INSERT INTO tank_info (tank_id, name, type, radius_cm, height_cm, location) VALUES
-('tank_001', '1번 수조', '유수식', 520, 120, '경북 영덕군'),
-('tank_002', '2번 수조', '유수식', 520, 120, '경북 영덕군'),
-('tank_003', '3번 수조', '유수식', 520, 120, '경북 영덕군'),
-('tank_004', '4번 수조', '유수식', 520, 120, '경북 영덕군');
+-- 반려동물 테이블
+CREATE TABLE pets (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    species ENUM('DOG', 'CAT') NOT NULL,
+    breed VARCHAR(100),
+    birth_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 진단 이력 테이블
+CREATE TABLE diagnoses (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    pet_id BIGINT NOT NULL,
+    type ENUM('EYE', 'SKIN') NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    result VARCHAR(100) NOT NULL,
+    confidence DECIMAL(5,2) NOT NULL,
+    diagnosis_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pet_id) REFERENCES pets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 질환 정보 테이블
+CREATE TABLE diseases (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    type ENUM('EYE', 'SKIN') NOT NULL,
+    description TEXT,
+    treatment TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 초기 질환 데이터 삽입
+INSERT INTO diseases (name, type, description, treatment) VALUES
+('결막염', 'EYE', '눈의 결막에 발생한 염증으로 충혈, 눈곱, 눈물 등의 증상이 나타납니다.', '수의사 진료가 필요합니다. 항생제 안약으로 치료 가능합니다.'),
+('백내장', 'EYE', '수정체가 혼탁해져 시력이 저하되는 질환입니다.', '수술적 치료가 필요할 수 있습니다.'),
+('각막염', 'EYE', '각막에 염증이 발생하여 통증과 시력 저하가 나타납니다.', '항생제 치료 및 수의사 진료가 필요합니다.'),
+('녹내장', 'EYE', '안압 상승으로 시신경이 손상되는 질환입니다.', '응급 치료가 필요하며, 안압 조절 약물 치료를 시행합니다.'),
+('피부염', 'SKIN', '피부 염증으로 발적, 부종, 가려움증 등이 나타납니다.', '항염증제 및 항생제 치료가 필요할 수 있습니다.'),
+('탈모', 'SKIN', '국소적 또는 전신적 털 손실이 발생합니다.', '원인 파악 후 적절한 치료가 필요합니다.'),
+('습진', 'SKIN', '가려움과 발진이 나타나는 피부 질환입니다.', '항히스타민제 및 스테로이드 치료가 필요할 수 있습니다.'),
+('곰팡이 감염', 'SKIN', '백선 등 곰팡이에 의한 피부 감염입니다.', '항진균제 치료가 필요합니다.');
 ```
 
----
+## 모니터링 (선택 사항)
 
-## 🔧 **고급 설정**
+### Prometheus + Grafana
 
-### **GPU 지원 (AI Model)**
+```yaml
+# docker-compose.monitoring.yml 추가
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
+
+## 트러블슈팅
+
+### 1. 포트 충돌
 ```bash
-# NVIDIA Docker Runtime 설치 필요
-# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+# 사용 중인 포트 확인 (Windows)
+netstat -ano | findstr :3308
 
-# GPU 사용 여부 확인
-docker-compose exec ai-model python -c "import torch; print(torch.cuda.is_available())"
+# 프로세스 종료
+taskkill /PID <PID> /F
 ```
 
----
-
-### **환경 변수 커스터마이징**
-`.env` 파일 생성:
+### 2. Docker 네트워크 문제
 ```bash
-# MySQL
-MYSQL_ROOT_PASSWORD=custom_root_password
-MYSQL_DATABASE=salmon_farm
-MYSQL_USER=custom_user
-MYSQL_PASSWORD=custom_password
-
-# Backend
-AI_MODEL_BASE_URL=http://ai-model:5000
-
-# Frontend
-VITE_API_BASE_URL=http://localhost:8080/api
+# 네트워크 재생성
+docker network rm petmediscan-network
+docker network create petmediscan-network
 ```
 
----
-
-## 📊 **헬스 체크**
-
+### 3. MySQL 초기화 실패
 ```bash
-# Backend
-curl http://localhost:8080/api/health
-
-# AI Model
-curl http://localhost:5000/health
-
-# MySQL
-docker-compose exec db mysql -u salmon_user -psalmon_pass123 -e "SELECT 1"
+# 볼륨 삭제 후 재시작
+docker-compose down -v
+docker-compose up -d mysql
 ```
 
----
+## Git Workflow
 
-## 📝 **라이선스**
+### Branch 전략
+- `main`: 프로덕션 설정
+- `develop`: 개발 설정
+- `feature/infra-기능명`: 인프라 기능 추가
 
-MIT License - [LICENSE](../LICENSE) 참조
+### Commit Convention
+```
+infra: 인프라 설정 추가/수정
+docker: Docker 설정 변경
+ci: CI/CD 설정 변경
+docs: 문서 수정
+```
 
----
+## 팀 구성원
 
-**🐟 Docker로 연어 양식장 시스템을 쉽게 배포하세요!**
+- Infra 담당자 1: Docker, CI/CD 관리
+- Infra 담당자 2: 데이터베이스, 모니터링
+
+## 참고 자료
+
+- [Docker Compose 공식 문서](https://docs.docker.com/compose/)
+- [Jenkins 공식 문서](https://www.jenkins.io/doc/)
+- [MySQL Docker 이미지](https://hub.docker.com/_/mysql)
+
+## 라이선스
+
+이 프로젝트는 교육 목적으로 제작되었습니다.
