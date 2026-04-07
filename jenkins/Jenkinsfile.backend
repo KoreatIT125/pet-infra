@@ -1,0 +1,85 @@
+pipeline {
+    agent any
+    
+    tools {
+        jdk 'JDK17'  // Jenkins에서 설정한 JDK 이름
+    }
+    
+    environment {
+        DOCKER_COMPOSE_FILE = '../pet-infra/docker-compose.yml'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📦 Git Repository 체크아웃 중...'
+                git branch: '${GIT_BRANCH}',
+                    url: 'https://github.com/KoreatIT125/pet-backend.git'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo '🔨 Gradle 빌드 시작...'
+                sh 'chmod +x gradlew'
+                sh './gradlew clean build -x test'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo '🧪 단위 테스트 실행 중...'
+                sh './gradlew test'
+            }
+            post {
+                always {
+                    junit '**/build/test-results/test/*.xml'
+                }
+            }
+        }
+        
+        stage('Docker Build') {
+            steps {
+                echo '🐳 Docker 이미지 빌드 중...'
+                sh '''
+                    docker build -t petmediscan-backend:${BUILD_NUMBER} .
+                    docker tag petmediscan-backend:${BUILD_NUMBER} petmediscan-backend:latest
+                '''
+            }
+        }
+        
+        stage('Deploy') {
+            when {
+                branch 'main'  // main 브랜치에만 배포
+            }
+            steps {
+                echo '🚀 Docker 컨테이너 재배포 중...'
+                sh '''
+                    # 기존 컨테이너 중지 및 제거
+                    docker stop petmediscan-backend || true
+                    docker rm petmediscan-backend || true
+                    
+                    # Docker Compose로 재시작
+                    cd ../pet-infra
+                    docker-compose up -d backend
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ 빌드 및 배포 성공!'
+            // Slack 알림 (선택 사항)
+            // slackSend color: 'good', message: "Backend 배포 성공: ${env.JOB_NAME} - ${env.BUILD_NUMBER}"
+        }
+        failure {
+            echo '❌ 빌드 또는 배포 실패!'
+            // slackSend color: 'danger', message: "Backend 배포 실패: ${env.JOB_NAME} - ${env.BUILD_NUMBER}"
+        }
+        always {
+            echo '🧹 워크스페이스 정리 중...'
+            cleanWs()
+        }
+    }
+}
